@@ -336,7 +336,8 @@ def maxwell_garnett(
         effective_permittivity = maxwell_garnett(frac_volume=0.2, e0=1, eps=3.185, depol_xyz=[0.3, 0.3, 0.4])
 
         #If accessed from elsewhere, use absolute import
-        from smrt.emmodel.commonfunc import maxwell_garnett
+        from from smrt.permittivity.generic_mixing_formula import maxwell_garnett
+
     """
     assert np.all(frac_volume <= 1)
 
