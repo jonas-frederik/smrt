@@ -1,4 +1,7 @@
 # .pre-commit-config.yaml
+default_language_version:
+  python: python3.15
+
 repos:
 - repo: https://github.com/astral-sh/ruff-pre-commit
   # Ruff version.
