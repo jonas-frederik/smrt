@@ -48,7 +48,7 @@ def test_symmetrization():
 
     P = IBA(scatt, sp.layers[0]).ft_even_phase(mu, mu, m_max=1).compress(mode=1)
 
-    symP = symmetrize_phase_matrix(P, m=1)
+    symP = symmetrize_phase_matrix(P, mode=1)
 
     npt.assert_allclose(P[0:6, 0:6], symP[0:6, 0:6])
     npt.assert_allclose(P[6:, 6:], symP[6:, 6:])

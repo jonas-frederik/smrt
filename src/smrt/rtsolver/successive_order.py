@@ -432,7 +432,7 @@ class SuccessiveOrder(CoherentLayerMixin, DiscreteOrdinatesMixin, PlanckMixin, R
         for m in range(m_max + 1):
             p = phase.compress(mode=m)
             if self.phase_symmetrization:
-                p = symmetrize_phase_matrix(p, m=0)
+                p = symmetrize_phase_matrix(p, mode=0)
 
             coef = 0.5 if m == 0 else 0.25  # coef to apply on the phase matrix, see eq 2 in Greenwald 2005 for m=0
             p *= coef

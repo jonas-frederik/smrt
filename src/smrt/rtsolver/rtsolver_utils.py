@@ -761,11 +761,11 @@ def normalize_diffuse_matrix(mat, mu_st, mu_i, weights):
     return mat
 
 
-def symmetrize_phase_matrix(A, m):
+def symmetrize_phase_matrix(A, mode):
     n = A.shape[1] // 2
     newA = np.empty_like(A)
 
-    if m == 0:
+    if mode == 0:
         npol = 2
         newA[:n, :n] = 0.5 * (A[:n, :n] + A[n:, n:])
         newA[n:, n:] = newA[:n, :n]
