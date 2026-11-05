@@ -40,6 +40,9 @@ V polarization and 53° incidence angle and the following code plots this timese
 
 # Stdlib import
 
+import json
+from types import SimpleNamespace
+
 import numpy as np
 import pandas as pd
 import xarray as xr
@@ -58,25 +61,54 @@ def open_result(filename):
     Returns:
         Result: the result object read from disk.
     """
-    data = xr.open_dataarray(filename, autoclose=True)
 
-    #  argh... need to convert polarization in unicode!
+    # open the dataset and load the main data DataArray.
+    with xr.open_dataset(filename) as ds:
+        version = ds.attrs.get("smrt_result_version", "1.0")
+
+        if version == "1.0":
+            # files written by xarray from an unnamed DataArray
+            data = ds["__xarray_dataarray_variable__"].load()
+        elif version == "2.0":
+            data = ds["data"].load()
+        else:
+            raise SMRTError(f"open_result: result file {filename} has unknown version {version}.")
+
+        attrs = dict(ds.attrs)
+
+    # convert polarization in unicode!
     for d in data.dims:
         if d.startswith("polarization"):
             data[d] = data[d].astype("U1")
 
-    mode = getattr(data.attrs, "mode", None)
-    if (mode is None) or (mode not in "AP"):
-        # guess the mode
-        if "theta_inc" in data.coords:
-            mode = "A"
-        else:
-            mode = "P"
+    # read other_data and channel_map if present.
+    sensor = SimpleNamespace(channel_map={})  # dummy sensor to hold the channel_map
+    other_data = {}  # not recorded in version 1.0
 
-    return make_result(mode, data)
+    if version == "1.0":
+        # guess the class
+        result_class = "ActiveResult" if "theta_inc" in data.coords else "PassiveResult"
+    elif version == "2.0":
+        result_class = attrs.get("result_class")
+
+        channel_map = json.loads(attrs.get("channel_map", "{}"))
+        if not isinstance(channel_map, dict):
+            raise SMRTError(f"open_result: invalid channel_map in {filename}.")
+        sensor.channel_map = channel_map
+
+        with xr.open_datatree(filename) as tree:
+            if "other_data" in tree.children:
+                for k, node in tree["other_data"].children.items():
+                    group_ds = node.to_dataset(inherit=False).load()  # load before the file is closed
+                    # a DataArray is written as a Dataset with a single generic variable
+                    other_data[k] = group_ds.get("__xarray_dataarray_variable__", group_ds)
+    else:
+        raise SMRTError(f"open_result: result file {filename} has unknown version {version}.")
+
+    return make_result(sensor, data, result_class=result_class, other_data=other_data)
 
 
-def make_result(sensor, *args, **kwargs):
+def make_result(sensor, *args, result_class=None, **kwargs):
     """Create an active or passive result object according to the mode.
 
     Args:
@@ -84,7 +116,13 @@ def make_result(sensor, *args, **kwargs):
         \\*args: arguments to be passed to the Result constructor.
         \\**kwargs: keyword arguments to be passed to the Result constructor.
     """
-    if sensor.mode == "A":
+    if result_class is not None:
+        for cls in [ActiveResult, PassiveResult, AltimetryResult]:
+            if cls.__name__ == result_class:
+                return cls(*args, channel_map=sensor.channel_map, **kwargs)
+
+        raise SMRTError(f"make_result: unknown class {result_class}. Must be ActiveResult or PassiveResult.")
+    elif sensor.mode == "A":
         return ActiveResult(*args, channel_map=sensor.channel_map, **kwargs)
     else:
         return PassiveResult(*args, channel_map=sensor.channel_map, **kwargs)
@@ -93,7 +131,7 @@ def make_result(sensor, *args, **kwargs):
 class Result(object):
     """Contain the results of a/many computations and provides convenience functions to access these results."""
 
-    def __init__(self, radiance, coords=None, channel_map=None, other_data={}, mother_df=None):
+    def __init__(self, radiance, coords=None, *, channel_map=None, other_data={}, mother_df=None):
         """Build results array with the given radiance array (numpy array or xarray) and dimensions if numpy array is
         given.
         """
@@ -105,7 +143,9 @@ class Result(object):
             self.data = xr.DataArray(radiance, coords)
 
         for d in other_data.values():
-            assert isinstance(d, xr.DataArray)  # this is emitter responsability to precise the coordinates
+            # this is emitter responsability to provide the coordinates, in a DataArray or Dataset.
+            assert isinstance(d, (xr.DataArray, xr.Dataset))
+
         self.other_data = other_data
 
         # a dataframe can be provided and will be merged with the results when using return_as_dataframe or to_dataframe
@@ -144,7 +184,32 @@ class Result(object):
             filename: The name of the file to save the result to.
             netcdf_engine: The netCDF engine to use (optional).
         """
-        self.data.to_netcdf(filename, engine=netcdf_engine)
+        ds = xr.Dataset(
+            {"data": self.data},
+            attrs={
+                "result_class": self.__class__.__name__,
+                "smrt_result_version": "2.0",
+                "channel_map": json.dumps(self.channel_map),
+            },
+        )
+
+        ds.to_netcdf(filename, format="NETCDF4", engine=netcdf_engine)
+
+        # save other_data in groups
+        for k, v in self.other_data.items():
+            if isinstance(v, (xr.DataArray, xr.Dataset)):
+                v.to_netcdf(
+                    filename,
+                    format="NETCDF4",
+                    engine=netcdf_engine,
+                    mode="a",
+                    group=f"other_data/{k}",
+                    auto_complex=True,
+                )
+            else:
+                raise SMRTError(
+                    f"Result.save: other_data must be a dict of xarray.DataArray or xarray.Dataset. Got {type(v)}"
+                )
 
     def sel_data(self, channel=None, **kwargs):
         raise NotImplementedError("must be implemented in a subclass")

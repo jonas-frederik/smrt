@@ -14,10 +14,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 	- change the substrate class to converge to interface+layer
 	- remove the emissivity_matrix method in the substrates
 	- rename and duplicate some fresnel functions for a smoother numba jit
+	- result load/save is improved to also record channel_map and other_data. Old result files can still be read, but
+	  the new version are not compatible with the old ones.
 
 ### Bug
+
+
+## [v1.7.3]
+### Bug
 	- fix several computational bugs in the SAR altimetry related to the computation of the incidence sampling
-	and delays. This only affected Landy19 and Boy17.
+	   and delays. This only affected Landy19 and Boy17.
+	- fix missing altimeter_list.py file
 
 ## [v1.7]
 ### Added

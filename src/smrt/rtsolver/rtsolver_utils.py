@@ -269,6 +269,7 @@ class DiscreteOrdinatesMixin(metaclass=ABCMeta):
             self.prepare_incident_intensity()
         )  # TODO Ghi: make an iterator
 
+        other_data = {}
         #
         # compute the outgoing intensity for each mode
         #
@@ -277,7 +278,7 @@ class DiscreteOrdinatesMixin(metaclass=ABCMeta):
         elif self.sensor.mode == "A":
             intensity_up = np.zeros((npol, self.streams.n_air, npol, len(incident_streams)))
             # compute the coherent contribution
-            coherent_intensity_up_0 = compute_modem(
+            coherent_intensity_up_0, other_data[-1] = compute_modem(
                 mode=0, streams=self.streams, intensity_down=intensity_0, coherent_only=True
             )
         else:
@@ -289,7 +290,7 @@ class DiscreteOrdinatesMixin(metaclass=ABCMeta):
             intensity_down_m = intensity_0 if m == 0 else intensity_higher
 
             # compute the upwelling intensity for mode m
-            intensity_up_m = compute_modem(
+            intensity_up_m, other_data[m] = compute_modem(
                 mode=m, streams=self.streams, intensity_down=intensity_down_m, coherent_only=False
             )
 
@@ -320,9 +321,17 @@ class DiscreteOrdinatesMixin(metaclass=ABCMeta):
         else:
             raise NotImplementedError()
 
-        return outmu, intensity_up
+        if other_data:
+            # create an xarray from the other_data dict (for each key k in other_data),
+            # with a new dimension "mode" for the mode number
+            mode = xr.IndexVariable("mode", list(other_data.keys()))
+            other_data = {k: xr.concat([other_data[m][k] for m in mode.values], dim=mode) for k in other_data[0]}
 
-    def make_result(self, outmu, intensity_up, other_coords: Optional[Sequence] = None):
+        return outmu, intensity_up, other_data
+
+    def make_result(
+        self, outmu, intensity_up, other_coords: Optional[Sequence] = None, other_data: Optional[dict] = None
+    ):
         #  describe the results list of (dimension name, dimension array of value)
 
         rtsolver = cast(RTSolverBase, self)
@@ -337,8 +346,11 @@ class DiscreteOrdinatesMixin(metaclass=ABCMeta):
         if other_coords is not None:
             coords += other_coords
 
+        if other_data is None:
+            other_data = {}
+
         # store other diagnostic information
-        other_data = {
+        other_data |= {
             "stream_angles": xr.DataArray(np.rad2deg(np.arccos(outmu)), coords=[range(len(outmu))]),
         } | prepare_kskaeps_profile_information(
             rtsolver.snowpack, rtsolver.emmodels, effective_permittivity=rtsolver.effective_permittivity, mu=outmu

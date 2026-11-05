@@ -253,12 +253,12 @@ class DORT(RTSolverBase, CoherentLayerMixin, DiscreteOrdinatesMixin, PlanckMixin
         )
 
         # solve the RT equation for each mode
-        outmu, intensity = self.sum_modes(compute_modem=compute_modem, m_max=m_max)
+        outmu, intensity, other_data = self.sum_modes(compute_modem=compute_modem, m_max=m_max)
 
         # interpolate to the requested streams
         intensity = self.interpolate_intensity(outmu, intensity)
 
-        return self.make_result(outmu, intensity)
+        return self.make_result(outmu, intensity, other_data=other_data)
 
     def dort_modem_banded(
         self,
@@ -329,7 +329,7 @@ class DORT(RTSolverBase, CoherentLayerMixin, DiscreteOrdinatesMixin, PlanckMixin
                     # run in a try to catch the exception
                     beta, Eu, Ed = eigenvalue_solver[layer].solve(mode, coherent_only)
                 except SMRTError:
-                    return _reshape_output(np.full_like(intensity_down, np.nan).squeeze(), npol)
+                    return _reshape_output(np.full_like(intensity_down, np.nan).squeeze(), npol), {}
             else:
                 beta, Eu, Ed = eigenvalue_solver[layer].solve(mode, coherent_only)
             assert Eu.shape[0] == npol * nsl
@@ -485,7 +485,7 @@ class DORT(RTSolverBase, CoherentLayerMixin, DiscreteOrdinatesMixin, PlanckMixin
 
         I0up_m = np.array(I0up_m).squeeze()
 
-        return _reshape_output(I0up_m, npol)
+        return _reshape_output(I0up_m, npol), {}
 
 
 def _reshape_output(I0up_m, npol: int):
